@@ -1,21 +1,15 @@
 import { Contact, ContactTemplate, ContactUpdate } from '@clinq/bridge';
 import axios from 'axios';
-import querystring from 'querystring';
-import { authorizeApiKey } from './access-token';
-import config from './config';
 import { convertContactToVendorContact, convertVendorContactToContact } from './contact';
-import {
-    IZammadAuthResponse,
-} from './interfaces';
 
 export async function createContact(
     apiKey: string,
+    apiUrl: string,
     contact: ContactTemplate
 ): Promise<Contact> {
     const vendorContact = convertContactToVendorContact(contact);
 
-    const { accessToken } = await authorizeApiKey(apiKey);
-    const response = await axios.post(`${config().VENDOR_BASE_URL}/api/v1/users`, vendorContact, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const response = await axios.post(`${apiUrl}/api/v1/users`, vendorContact, { headers: { Authorization: `Token ${apiKey}` } });
 
     if (!response || response.status !== 201) {
         return Promise.reject(`Error in Zammad response: ${response.statusText}`);
@@ -34,6 +28,7 @@ export async function createContact(
 
 export async function updateContact(
     apiKey: string,
+    apiUrl: string,
     contact: ContactUpdate
 ): Promise<Contact> {
     if (!contact.id) {
@@ -41,8 +36,7 @@ export async function updateContact(
     }
     const vendorContact = convertContactToVendorContact(contact, contact.id);
 
-    const { accessToken } = await authorizeApiKey(apiKey);
-    const response = await axios.put(`${config().VENDOR_BASE_URL}/api/v1/users/${contact.id}`, vendorContact, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const response = await axios.put(`${apiUrl}/api/v1/users/${contact.id}`, vendorContact, { headers: { Authorization: `Token ${apiKey}` } });
 
     if (!response || response.status !== 200) {
         return Promise.reject(`Error in Zammad response: ${response.statusText}`);
@@ -60,20 +54,21 @@ export async function updateContact(
 }
 
 export async function getContacts(
-    apiKey: string
+    apiKey: string,
+    apiUrl: string
 ): Promise<Contact[]> {
-    const { accessToken } = await authorizeApiKey(apiKey);
-    return getPaginatedContacts(accessToken);
+    return getPaginatedContacts(apiKey, apiUrl);
 }
 
 async function getPaginatedContacts(
-    accessToken: string,
+    apiKey: string,
+    apiUrl: string,
     page: number = 1,
     previousContacts?: Contact[]
 ): Promise<Contact[]> {
     // search for "customers" only
-    const response = await axios.get(`${config().VENDOR_BASE_URL}/api/v1/users/search?query=role_ids:3`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+    const response = await axios.get(`${apiUrl}/api/v1/users/search?query=role_ids:3`, {
+        headers: { Authorization: `Token ${apiKey}` },
         params: { page }
     });
 
@@ -96,15 +91,14 @@ async function getPaginatedContacts(
     }
 
     if (response.data.length > 0) {
-        return getPaginatedContacts(accessToken, page + 1, contacts);
+        return getPaginatedContacts(apiKey, apiUrl, page + 1, contacts);
     }
 
     return contacts;
 }
 
-export async function deleteContact(apiKey: string, id: string): Promise<void> {
-    const { accessToken } = await authorizeApiKey(apiKey);
-    const responseGet = await axios.get(`${config().VENDOR_BASE_URL}/api/v1/users/${id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+export async function deleteContact(apiKey: string, apiUrl: string, id: string): Promise<void> {
+    const responseGet = await axios.get(`${apiUrl}/api/v1/users/${id}`, { headers: { Authorization: `Token ${apiKey}` } });
 
     if (!responseGet || responseGet.status !== 200) {
         return Promise.reject(`Error in Zammad response: ${responseGet.statusText}`);
@@ -114,18 +108,9 @@ export async function deleteContact(apiKey: string, id: string): Promise<void> {
         throw new Error(`Could not delete Zammad contact: user id has not a customer role`);
     }
 
-    const response = await axios.delete(`${config().VENDOR_BASE_URL}/api/v1/users/${id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const response = await axios.delete(`${apiUrl}/api/v1/users/${id}`, { headers: { Authorization: `Token ${apiKey}` } });
 
     if (!response || response.status !== 200) {
         return Promise.reject(`Error in Zammad response: ${response.statusText}`);
     }
-}
-
-export function getOAuth2RedirectUrl(): string {
-    return config().OAUTH_AUTHORIZE_URL + '?' + querystring.encode({
-            client_id: config().OAUTH_CLIENT_ID,
-            response_type: 'code',
-            redirect_uri: config().OAUTH_REDIRECT_URL,
-        }
-    );
 }
